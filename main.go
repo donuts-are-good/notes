@@ -25,8 +25,11 @@ func main() {
 
 	// If the required number of arguments is not provided, display usage and exit
 	if len(flag.Args()) < 3 {
+
+		// Display syntax and list entries
 		fmt.Println("Usage: notes <tags> <title> <description>")
-		os.Exit(1)
+		listEntries()
+		return
 	}
 
 	// Parse the tags, title, and description from the command line arguments

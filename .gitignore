@@ -1,3 +1,4 @@
 notes
 go.mod
 go.sum
+build-release.sh
