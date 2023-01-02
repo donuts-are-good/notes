@@ -14,7 +14,7 @@ Simply run `notes` followed by a list of tags and a title, and Notes will create
 
 ## 🚀 Usage
 
-To create a new journal entry, run `notes` followed by a list of tags and a title:
+To create a new journal entry, run `notes` followed by a list of tags, a title and short description:
 
 ```
 ./notes "code,compiled,ideas" "design doc for a better web" "these are my ideas for a better web"`
@@ -23,10 +23,13 @@ This will create a new journal entry with the title "design doc for a better web
 
 ```
 ./notes --list
+Usage: notes <tags> <title> <description>
 
-(1) 2022-12-30 goals for 2023 269B
-(2) 2022-12-30 hello-world 77B
-Enter the number of the entry you want to view: 
+<#> <date>	<size>	<title>
+(1) 2023-01-02	866B	"a simpler no suck forum"
+(2) 2023-01-02	414B	"goals for 2023"
+(3) 2022-12-31	119B	"hello-world"
+
 ```
 
 To view a list of your journal entries, run `notes --list`. This will display a list of your entries, ordered chronologically, and allow you to select one to view using the arrow keys or by typing its number and pressing enter.
