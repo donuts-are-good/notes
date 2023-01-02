@@ -104,6 +104,7 @@ func listEntries() {
 		fmt.Printf("Error listing entries: %s\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("\n<#> <date>\t<size>\t<title>")
 
 	// Iterate over the journal entries
 	for i, entry := range entries {
@@ -126,11 +127,11 @@ func listEntries() {
 		}
 
 		// Display the entry
-		fmt.Printf("(%d) %s %s %s\n", i+1, modTime, title, size)
+		fmt.Printf("(%d) %s\t%s\t\"%s\"\n", i+1, modTime, size, title)
 	}
 
 	// Prompt the user to enter the number of the entry they want to view
-	fmt.Print("Enter the number of the entry you want to view: ")
+	fmt.Print("\nEnter the number of the entry you want to view: ")
 
 	// Create a reader to read input from the standard input stream
 	reader := bufio.NewReader(os.Stdin)
@@ -172,13 +173,16 @@ func listEntries() {
 
 // Get the filesize in a human readable format
 func getFileSize(filename string) (string, error) {
+
 	// Get the file information
 	info, err := os.Stat(filename)
 	if err != nil {
 		return "", err
 	}
+
 	// Get the size of the file in bytes
 	size := info.Size()
+
 	// If the size is less than 1024 bytes, return the size in bytes
 	if size < 1024 {
 		return fmt.Sprintf("%dB", size), nil
@@ -187,6 +191,7 @@ func getFileSize(filename string) (string, error) {
 	} else if size < 1024*1024*1024 { // If the size is less than 1024 * 1024 * 1024 bytes, return the size in megabytes
 		return fmt.Sprintf("%.1fMB", float64(size)/1024/1024), nil
 	}
+
 	// If the size is more than or equal to 1024 * 1024 * 1024 bytes, return the size in gigabytes
 	return fmt.Sprintf("%.1fGB", float64(size)/1024/1024/1024), nil
 }
