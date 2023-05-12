@@ -5,3 +5,4 @@ build-release.sh
 *amd64
 *arm64
 *.exe
+BUILDS
