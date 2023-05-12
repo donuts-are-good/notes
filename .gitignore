@@ -2,3 +2,6 @@ notes
 go.mod
 go.sum
 build-release.sh
+*amd64
+*arm64
+*.exe
