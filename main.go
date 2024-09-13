@@ -11,6 +11,12 @@ import (
 	"strings"
 )
 
+const (
+	journalDirName = "notes"
+	tagsDirName    = "tags"
+	defaultEditor  = "nano"
+)
+
 func main() {
 
 	// Parse the command line flag "list"
@@ -38,16 +44,10 @@ func main() {
 	description := flag.Arg(2)
 
 	// Create the journal directory if it doesn't exist
-	journalDir := filepath.Join(os.Getenv("HOME"), "notes", "journal")
-	if _, err := os.Stat(journalDir); os.IsNotExist(err) {
-		os.MkdirAll(journalDir, 0755)
-	}
-
-	// Create the tags directory if it doesn't exist
-	tagsDir := filepath.Join(journalDir, "tags")
-	if _, err := os.Stat(tagsDir); os.IsNotExist(err) {
-		os.MkdirAll(tagsDir, 0755)
-	}
+	journalDir := getJournalDir()
+	tagsDir := filepath.Join(journalDir, tagsDirName)
+	createDirIfNotExist(journalDir)
+	createDirIfNotExist(tagsDir)
 
 	// Create the new journal entry
 	filename := title + ".txt"
@@ -67,11 +67,11 @@ func main() {
 	// Create symlinks to the journal entry in the tags directories
 	for _, tag := range tags {
 		tagDir := filepath.Join(tagsDir, tag)
-		if _, err := os.Stat(tagDir); os.IsNotExist(err) {
-			os.MkdirAll(tagDir, 0755)
-		}
+		createDirIfNotExist(tagDir)
 		symlinkPath := filepath.Join(tagDir, filename)
-		os.Symlink(filename, symlinkPath)
+		if err := os.Symlink(filename, symlinkPath); err != nil {
+			fmt.Printf("Error creating symlink: %s\n", err)
+		}
 	}
 
 	// Get the environment variable for the default file editor
@@ -79,7 +79,7 @@ func main() {
 
 	// If the environment variable is not set, use "nano" as the default editor
 	if editor == "" {
-		editor = "nano"
+		editor = defaultEditor
 	}
 
 	// Create a new command to open the specified file in the editor
@@ -95,10 +95,7 @@ func main() {
 }
 
 func listEntries() {
-	// Get the path to the journal directory
-	journalDir := filepath.Join(os.Getenv("HOME"), "notes", "journal")
-
-	// Get a list of all journal entries in the journal directory
+	journalDir := getJournalDir()
 	entries, err := filepath.Glob(filepath.Join(journalDir, "*.txt"))
 	if err != nil {
 		fmt.Printf("Error listing entries: %s\n", err)
@@ -108,7 +105,6 @@ func listEntries() {
 
 	// Iterate over the journal entries
 	for i, entry := range entries {
-
 		// Get the modification time and title of the entry
 		info, err := os.Stat(entry)
 		if err != nil {
@@ -130,45 +126,12 @@ func listEntries() {
 		fmt.Printf("(%d) %s\t%s\t\"%s\"\n", i+1, modTime, size, title)
 	}
 
-	// Prompt the user to enter the number of the entry they want to view
-	fmt.Print("\nEnter the number of the entry you want to view: ")
-
-	// Create a reader to read input from the standard input stream
-	reader := bufio.NewReader(os.Stdin)
-
-	// Read a line of input from the user
-	input, _ := reader.ReadString('\n')
-
-	// Trim leading and trailing whitespace from the input
-	input = strings.TrimSpace(input)
-
-	// Convert the input to an integer
-	entryIndex, err := strconv.Atoi(input)
-
-	// Check for an error in the conversion
-	if err != nil {
-		fmt.Printf("Error parsing input: %s\n", err)
-		os.Exit(1)
-	}
-
-	// Check that the entry number is valid
-	if entryIndex < 1 || entryIndex > len(entries) {
-		fmt.Printf("Invalid entry number: %d\n", entryIndex)
-		os.Exit(1)
-	}
+	// Remove the redundant prompt and use promptForEntryNumber directly
+	entryIndex := promptForEntryNumber(len(entries))
 
 	// Open the selected journal entry in the default file editor
 	entry := entries[entryIndex-1]
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "nano"
-	}
-	cmd := exec.Command(editor, entry)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-
+	openInEditor(entry)
 }
 
 // Get the filesize in a human readable format
@@ -194,4 +157,49 @@ func getFileSize(filename string) (string, error) {
 
 	// If the size is more than or equal to 1024 * 1024 * 1024 bytes, return the size in gigabytes
 	return fmt.Sprintf("%.1fGB", float64(size)/1024/1024/1024), nil
+}
+
+func getJournalDir() string {
+	return filepath.Join(os.Getenv("HOME"), journalDirName, "journal")
+}
+
+func createDirIfNotExist(dir string) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Printf("Error creating directory: %s\n", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func openInEditor(filepath string) {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = defaultEditor
+	}
+
+	cmd := exec.Command(editor, filepath)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Error opening editor: %s\n", err)
+		os.Exit(1)
+	}
+}
+
+func promptForEntryNumber(maxEntries int) int {
+	fmt.Print("\nEnter the number of the entry you want to view: ")
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	entryIndex, err := strconv.Atoi(input)
+	if err != nil || entryIndex < 1 || entryIndex > maxEntries {
+		fmt.Printf("Invalid entry number: %s\n", input)
+		os.Exit(1)
+	}
+
+	return entryIndex
 }
