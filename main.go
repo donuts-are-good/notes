@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -18,38 +19,88 @@ const (
 )
 
 func main() {
+	// Create command
+	createCmd := flag.NewFlagSet("create", flag.ExitOnError)
+	createTitle := createCmd.String("title", "", "title of the note (required)")
+	createBody := createCmd.String("body", "", "body of the note")
+	createTags := createCmd.String("tags", "", "comma-separated list of tags")
 
-	// Parse the command line flag "list"
-	listFlag := flag.Bool("list", false, "list journal entries")
-	flag.Parse()
+	// List command
+	listCmd := flag.NewFlagSet("list", flag.ExitOnError)
+	listTag := listCmd.String("tag", "", "list entries for a specific tag")
 
-	// If the "--list" flag was set, list the journal entries and exit
-	if *listFlag {
-		listEntries()
-		return
+	// Tags command
+	tagsCmd := flag.NewFlagSet("tags", flag.ExitOnError)
+	tagsSearch := tagsCmd.String("search", "", "search entries by tag")
+
+	if len(os.Args) == 2 && os.Args[1] == "--help" {
+		printUsage()
+		os.Exit(0)
 	}
 
-	// If the required number of arguments is not provided, display usage and exit
-	if len(flag.Args()) < 3 {
-
-		// Display syntax and list entries
-		fmt.Println("Usage: notes <tags> <title> <description>")
-		listEntries()
-		return
+	if len(os.Args) < 2 {
+		fmt.Println("Expected 'create', 'list', or 'tags' subcommands")
+		fmt.Println("Use --help for more information")
+		os.Exit(1)
 	}
 
-	// Parse the tags, title, and description from the command line arguments
-	tags := strings.Split(flag.Arg(0), ",")
-	title := flag.Arg(1)
-	description := flag.Arg(2)
+	switch os.Args[1] {
+	case "create":
+		createCmd.Parse(os.Args[2:])
+		if createCmd.Parsed() {
+			if *createTitle == "" && len(createCmd.Args()) == 0 {
+				fmt.Println("Usage: journal create [options]")
+				createCmd.PrintDefaults()
+				os.Exit(0)
+			}
+			createNote(*createTitle, *createBody, *createTags)
+		}
+	case "list":
+		listCmd.Parse(os.Args[2:])
+		if listCmd.Parsed() {
+			if len(listCmd.Args()) == 0 && *listTag == "" {
+				fmt.Println("Usage: journal list [options]")
+				listCmd.PrintDefaults()
+				os.Exit(0)
+			}
+			if *listTag != "" {
+				listEntriesByTag(*listTag)
+			} else {
+				listEntries()
+			}
+		}
+	case "tags":
+		tagsCmd.Parse(os.Args[2:])
+		if tagsCmd.Parsed() {
+			if len(tagsCmd.Args()) == 0 && *tagsSearch == "" {
+				fmt.Println("Usage: journal tags [options]")
+				tagsCmd.PrintDefaults()
+				os.Exit(0)
+			}
+			if *tagsSearch != "" {
+				searchEntriesByTag(*tagsSearch)
+			} else {
+				listAllTags()
+			}
+		}
+	default:
+		fmt.Println("Expected 'create', 'list', or 'tags' subcommands")
+		fmt.Println("Use --help for more information")
+		os.Exit(1)
+	}
+}
 
-	// Create the journal directory if it doesn't exist
+func createNote(title, body, tags string) {
+	if title == "" {
+		fmt.Println("Error: Title is required")
+		os.Exit(1)
+	}
+
 	journalDir := getJournalDir()
 	tagsDir := filepath.Join(journalDir, tagsDirName)
 	createDirIfNotExist(journalDir)
 	createDirIfNotExist(tagsDir)
 
-	// Create the new journal entry
 	filename := title + ".txt"
 	filedir := filepath.Join(journalDir, filename)
 	file, err := os.Create(filedir)
@@ -59,13 +110,13 @@ func main() {
 	}
 	defer file.Close()
 
-	// Write the description to the journal entry
 	w := bufio.NewWriter(file)
-	fmt.Fprintln(w, description)
+	fmt.Fprintln(w, body)
 	w.Flush()
 
-	// Create symlinks to the journal entry in the tags directories
-	for _, tag := range tags {
+	tagList := strings.Split(tags, ",")
+	for _, tag := range tagList {
+		tag = strings.TrimSpace(tag)
 		tagDir := filepath.Join(tagsDir, tag)
 		createDirIfNotExist(tagDir)
 		symlinkPath := filepath.Join(tagDir, filename)
@@ -74,24 +125,7 @@ func main() {
 		}
 	}
 
-	// Get the environment variable for the default file editor
-	editor := os.Getenv("EDITOR")
-
-	// If the environment variable is not set, use "nano" as the default editor
-	if editor == "" {
-		editor = defaultEditor
-	}
-
-	// Create a new command to open the specified file in the editor
-	cmd := exec.Command(editor, filedir)
-
-	// Set the command's standard input, output, and error to the current process's standard input, output, and error
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Run the command
-	cmd.Run()
+	openInEditor(filedir)
 }
 
 func listEntries() {
@@ -132,6 +166,85 @@ func listEntries() {
 	// Open the selected journal entry in the default file editor
 	entry := entries[entryIndex-1]
 	openInEditor(entry)
+}
+
+func listAllTags() {
+	tagsDir := filepath.Join(getJournalDir(), tagsDirName)
+	entries, err := os.ReadDir(tagsDir)
+	if err != nil {
+		fmt.Printf("Error listing tags: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("All tags:")
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue // Skip non-directory entries
+		}
+		name := entry.Name()
+		if !isHiddenOrSystemFile(name) {
+			fmt.Println(name)
+		}
+	}
+}
+
+func listEntriesByTag(tag string) {
+	tagDir := filepath.Join(getJournalDir(), tagsDirName, tag)
+	entries, err := filepath.Glob(filepath.Join(tagDir, "*.txt"))
+	if err != nil {
+		fmt.Printf("Error listing entries for tag '%s': %s\n", tag, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Entries tagged with '%s':\n", tag)
+	displayEntries(entries)
+}
+
+func searchEntriesByTag(searchTag string) {
+	tagsDir := filepath.Join(getJournalDir(), tagsDirName)
+	entries, err := os.ReadDir(tagsDir)
+	if err != nil {
+		fmt.Printf("Error searching tags: %s\n", err)
+		os.Exit(1)
+	}
+
+	var matchingEntries []string
+	for _, entry := range entries {
+		if !entry.IsDir() || isHiddenOrSystemFile(entry.Name()) {
+			continue
+		}
+		if strings.Contains(entry.Name(), searchTag) {
+			tagDir := filepath.Join(tagsDir, entry.Name())
+			files, err := filepath.Glob(filepath.Join(tagDir, "*.txt"))
+			if err == nil {
+				matchingEntries = append(matchingEntries, files...)
+			}
+		}
+	}
+
+	fmt.Printf("Entries matching tag search '%s':\n", searchTag)
+	displayEntries(matchingEntries)
+}
+
+func displayEntries(entries []string) {
+	sort.Strings(entries)
+	for i, entry := range entries {
+		info, err := os.Stat(entry)
+		if err != nil {
+			continue
+		}
+		modTime := info.ModTime().Format("2006-01-02")
+		title := strings.TrimSuffix(filepath.Base(entry), filepath.Ext(entry))
+		size, _ := getFileSize(entry)
+		fmt.Printf("(%d) %s\t%s\t\"%s\"\n", i+1, modTime, size, title)
+	}
+
+	if len(entries) > 0 {
+		entryIndex := promptForEntryNumber(len(entries))
+		openInEditor(entries[entryIndex-1])
+	} else {
+		fmt.Println("No entries found.")
+	}
 }
 
 // Get the filesize in a human readable format
@@ -202,4 +315,36 @@ func promptForEntryNumber(maxEntries int) int {
 	}
 
 	return entryIndex
+}
+
+func isHiddenOrSystemFile(name string) bool {
+	// List of common hidden or system directories to ignore
+	ignoredPrefixes := []string{".", "_", "~$"}
+	ignoredNames := map[string]bool{
+		"System Volume Information": true,
+		"$RECYCLE.BIN":              true,
+		"lost+found":                true,
+	}
+
+	// Check if the name starts with any ignored prefix
+	for _, prefix := range ignoredPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+
+	// Check if the name is in the list of ignored names
+	return ignoredNames[name]
+}
+
+func printUsage() {
+	fmt.Println("Usage:")
+	fmt.Println("  journal [command] [options]")
+	fmt.Println("\nCommands:")
+	fmt.Println("  create  Create a new journal entry")
+	fmt.Println("  list    List journal entries")
+	fmt.Println("  tags    List or search tags")
+	fmt.Println("\nOptions:")
+	fmt.Println("  --help  Show help information for a command")
+	fmt.Println("\nUse 'journal [command] --help' for more information about a command.")
 }
